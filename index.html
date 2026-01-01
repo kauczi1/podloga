@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>The Floor Ultra-Fast</title>
+    <style>
+        :root { --red: #ff4757; --green: #2ed573; --gold: #ffa502; --dark: #121212; }
+        body { font-family: sans-serif; background: var(--dark); color: white; margin: 0; overflow: hidden; user-select: none; }
+        .sekcja { display: none; height: 100vh; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .widoczna { display: flex; }
+        .grid { display: grid; grid-template-columns: 280px 1fr 280px; width: 100%; height: 90vh; }
+        .panel { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s; }
+        .aktywny { background: rgba(255, 71, 87, 0.2); border: 4px solid var(--red); }
+        .czekaj { opacity: 0.1; pointer-events: none; }
+        .timer { font-size: 5rem; font-weight: bold; margin-bottom: 20px; }
+        .foto-box { display: flex; justify-content: center; align-items: center; height: 60vh; }
+        img { max-width: 95%; max-height: 100%; border: 5px solid white; border-radius: 15px; display: none; }
+        img.pokazany { display: block; }
+        .btn { padding: 25px; margin: 10px; font-size: 1.4rem; cursor: pointer; border-radius: 15px; border: none; font-weight: bold; text-transform: uppercase; color: white; width: 90%; }
+        .btn-blue { background: #4b6584; width: 300px; }
+        .btn-green { background: var(--green); width: 300px; }
+        #loading-info { font-size: 1.5rem; color: var(--gold); }
+    </style>
+</head>
+<body>
+
+    <div id="ekran-start" class="sekcja widoczna">
+        <h1>THE FLOOR</h1>
+        <div id="menu-przyciski">
+            <button class="btn btn-blue" onclick="ladujKategorie('Owoce')">Owoce</button>
+            <button class="btn btn-blue" onclick="ladujKategorie('Zwierzęta')">Zwierzęta</button>
+        </div>
+        <div id="loading-info" style="display:none;">Pobieranie obrazków... <span id="progress">0%</span></div>
+    </div>
+
+    <div id="ekran-gracz" class="sekcja">
+        <h1>Kto zaczyna?</h1>
+        <button class="btn btn-blue" onclick="ustawGracza(0)">Gracz 1 (Lewy)</button>
+        <button class="btn btn-blue" onclick="ustawGracza(1)">Gracz 2 (Prawy)</button>
+    </div>
+
+    <div id="ekran-ready" class="sekcja">
+        <h1 id="ready-info">Gracz 1 zaczyna</h1>
+        <button class="btn btn-green" onclick="startTimera()">START</button>
+    </div>
+
+    <div id="ekran-gra" class="sekcja">
+        <div class="grid">
+            <div id="panel-0" class="panel">
+                <div id="zegar-0" class="timer">45</div>
+                <button class="btn btn-green" onclick="akcja('wiem')">WIEM</button>
+                <button class="btn btn-blue" style="background:var(--gold)" onclick="akcja('pass')">PASS</button>
+            </div>
+            <div class="foto-box" id="kontener-foto"></div>
+            <div id="panel-1" class="panel">
+                <div id="zegar-1" class="timer">45</div>
+                <button class="btn btn-green" onclick="akcja('wiem')">WIEM</button>
+                <button class="btn btn-blue" style="background:var(--gold)" onclick="akcja('pass')">PASS</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ekran-koniec" class="sekcja">
+        <h1 id="wynik-tekst">WYGRAŁ GRACZ X</h1>
+        <button class="btn btn-blue" onclick="location.reload()">ZAGRAJ OD NOWA</button>
+    </div>
+
+    <script>
+        const baza = {
+            'Owoce': ['apple', 'banana', 'orange', 'strawberry', 'lemon', 'watermelon', 'pineapple', 'grape', 'cherry', 'peach'],
+            'Zwierzęta': ['dog', 'cat', 'elephant', 'tiger', 'lion', 'giraffe', 'zebra', 'monkey', 'panda', 'kangaroo']
+        };
+
+        let pobraneObrazy = [];
+        let czasy = [45, 45];
+        let tura = 0;
+        let graTrwa = false;
+        let indexObrazka = 0;
+        let interval;
+
+        async function ladujKategorie(n) {
+            document.getElementById('menu-przyciski').style.display = 'none';
+            document.getElementById('loading-info').style.display = 'block';
+            
+            const lista = [...baza[n]].sort(() => Math.random() - 0.5);
+            let zaladowano = 0;
+
+            const obietnice = lista.map(slowo => {
+                return new Promise(resolve => {
+                    const img = new Image();
+                    img.src = `https://loremflickr.com/600/600/${slowo}?lock=${Math.floor(Math.random()*999)}`;
+                    img.onload = () => {
+                        zaladowano++;
+                        document.getElementById('progress').innerText = Math.round((zaladowano/lista.length)*100) + "%";
+                        pobraneObrazy.push(img);
+                        resolve();
+                    };
+                });
+            });
+
+            await Promise.all(obietnice);
+            pobraneObrazy.forEach(img => document.getElementById('kontener-foto').appendChild(img));
+            pokaz('ekran-gracz');
+        }
+
+        function ustawGracza(p) {
+            tura = p;
+            document.getElementById('ready-info').innerText = "Gracz " + (tura + 1) + " zaczyna. Gotowi?";
+            pokaz('ekran-ready');
+        }
+
+        function startTimera() {
+            graTrwa = true;
+            pokaz('ekran-gra');
+            zmienFoto();
+            interval = setInterval(() => {
+                if(graTrwa) {
+                    czasy[tura]--;
+                    if(czasy[tura] <= 0) stop(tura === 0 ? "2 (PRAWY)" : "1 (LEWY)");
+                    ui();
+                }
+            }, 1000);
+        }
+
+        function zmienFoto() {
+            document.querySelectorAll('#kontener-foto img').forEach(img => img.className = '');
+            if(indexObrazka < pobraneObrazy.length) {
+                pobraneObrazy[indexObrazka].className = 'pokazany';
+                indexObrazka++;
+            } else {
+                alert("Skończyły się obrazki!");
+                location.reload();
+            }
+        }
+
+        function akcja(typ) {
+            if(!graTrwa) return;
+            if(typ === 'wiem') tura = (tura === 0) ? 1 : 0;
+            else czasy[tura] = Math.max(0, czasy[tura] - 3);
+            
+            if(czasy[tura] === 0) stop(tura === 0 ? "2" : "1");
+            else { zmienFoto(); ui(); }
+        }
+
+        function ui() {
+            document.getElementById('zegar-0').innerText = czasy[0];
+            document.getElementById('zegar-1').innerText = czasy[1];
+            document.getElementById('panel-0').className = `panel ${tura === 0 ? 'aktywny' : 'czekaj'}`;
+            document.getElementById('panel-1').className = `panel ${tura === 1 ? 'aktywny' : 'czekaj'}`;
+        }
+
+        function stop(w) {
+            graTrwa = false;
+            clearInterval(interval);
+            document.getElementById('wynik-tekst').innerText = "WYGRAŁ GRACZ " + w;
+            pokaz('ekran-koniec');
+        }
+
+        function pokaz(id) {
+            document.querySelectorAll('.sekcja').forEach(s => s.classList.remove('widoczna'));
+            document.getElementById(id).classList.add('widoczna');
+        }
+    </script>
+</body>
+</html>
